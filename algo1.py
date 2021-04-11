@@ -6,20 +6,24 @@ class Dataset:
     def __init__(self, filepath):
         try:
             data = open(filepath, "r").readlines()
-            self.items = list({elem[0]:0 for elem in data if elem[0] != "\n"}.keys())
+            self.items = list({elem.split()[0]:0 for elem in data if elem[0] != "\n"}.keys())
             self.transactions = []
-            i = 1
+            i = 0
             while i < len(data):
-                if i > 1:
+                if data[i] == "\n":
                     i += 1
-                if i == len(data):
-                    break
+                # if i == len(data) :
+                #     break
                 tmp = []
-                while data[i] != "\n":
-                    tmp.append(data[i][0])
-                    i += 1
-                tmp = "".join(tmp)
-                self.transactions.append(tmp)
+                try:
+                    while data[i] != "\n":
+                        tmp.append(data[i].split()[0])
+                        i += 1
+                    self.transactions.append(tmp)
+                except:
+                    self.transactions.append(tmp)
+                    break
+            
         except IOError as e :
             print("Unable to read dataset file\n" + e)
 
@@ -46,56 +50,154 @@ class Dataset:
 # number transaction starts at 0
 # item index in transaction starts at 0
 
+
+def remove_occurences(rep_vert, index1, index2):
+    """
+    Index2 and index1 are items
+    Remove element from index2 list that cannot be mapped to index1 list.
+
+    Parameters:
+        rep_vert : dictionary where each key is an item and the value is its vertical representation
+        index1 (int): dictionary key, item of dataset
+        index2 (int): dictionary key, item of dataset
+
+    Returns: 
+        rep_vert edited
+    """
+    
+    counter1 = 0 # index of first list (item loop)
+    counter2 = 0 # index of second list (keys loop)
+    # traverse both lists
+    while counter1 < len(rep_vert[index1]) and counter2 < len(rep_vert[index2]):
+        if index2 != index1:
+            if rep_vert[index2][counter2][0] == rep_vert[index1][counter1][0]:
+                if rep_vert[index2][counter2][1] < rep_vert[index1][counter1][1]:
+                    rep_vert[index2].remove(rep_vert[index2][counter2])
+                else:
+                    counter2 +=1
+            elif rep_vert[index2][counter2][0] > rep_vert[index1][counter1][0]:
+                try:
+                    counter1 += 1
+                    rep_vert[index1][counter1]
+                except:
+                    del rep_vert[index2][-(len(rep_vert[index2])-counter2):]
+
+            else:
+                rep_vert[index2].remove(rep_vert[index2][counter2])
+        else:
+
+            try:
+                if rep_vert[index2][counter1][0] == rep_vert[index2][counter1 + 1][0] :
+                    while rep_vert[index2][counter1][0] == rep_vert[index2][counter2][0]:
+                        try:
+                            counter2 += 1
+                            rep_vert[index2][counter2]
+                        except:
+                            break
+                    rep_vert[index2].remove(rep_vert[index2][counter1])
+                    counter2 -= 1
+                    counter1 = counter2
+                    if counter1 == len(rep_vert[index2]) -1:
+                        rep_vert[index2].remove(rep_vert[index2][counter1])
+                
+                else:
+                    rep_vert[index2].remove(rep_vert[index2][counter1])
+                    if counter1 == len(rep_vert[index2]) -1:
+                        rep_vert[index2].remove(rep_vert[index2][counter1])
+            
+            except IndexError:
+                rep_vert[index2].remove(rep_vert[index2][counter1])
+                    
+    return rep_vert
+
+# from stackoverflow
+def merge_two_dicts(x, y):
+    z = x.copy()   # start with x's keys and values
+    z.update(y)    # modifies z with y's keys and values & returns None
+    return z
+
+def explore_branch(rep_vert, minSupp, branch, frequent_seq):
+    if rep_vert == {}:
+        return
+    items = list(rep_vert.keys())
+    last_item = branch[-1]
+    items.remove(last_item)
+    items.insert(len(items), last_item)
+    rep_vert_tmp = copy.deepcopy(rep_vert)
+    for item in items:
+        rep_vert_tmp = remove_occurences(rep_vert_tmp, last_item ,item)
+        branch_tmp = branch + [item]
+        supp_tmp = len(list(dict(rep_vert_tmp[item]).items()))
+        if supp_tmp < minSupp:
+                del rep_vert_tmp[item]
+        else:
+            #branch_tmp = branch + [item]
+            #print(f"Support of {branch_tmp} is {supp_tmp}")
+            frequent_seq["-".join(branch_tmp)] = supp_tmp
+            explore_branch(rep_vert_tmp, minSupp, branch_tmp, frequent_seq)
+    return frequent_seq
+
+
 def spade(filepath, minSupp):
     dataset = Dataset(filepath)
     rep_vert = dataset.to_vertical_representation()
     items = dataset.get_items()
+    frequent_seq = {}
     for item in items:
-        supp_tmp = len(set([i[0] for i in rep_vert[item]]))
+        supp_tmp = len(list(dict(rep_vert[item]).items()))
         if supp_tmp < minSupp:
             continue
         else:
+            #print(f"Support of {[item]} is {supp_tmp}")
+            frequent_seq["".join(item)] = supp_tmp
             rep_vert_tmp = copy.deepcopy(rep_vert)
             items_tmp = copy.deepcopy(items)
             items_tmp.remove(item)
             items_tmp.insert(len(items_tmp),item)
             for keys in items_tmp:
-                counter1 = 0 # index of first list (item loop)
-                counter2 = 0 # index of second list (keys loop)
-                # traverse both lists
-                while counter1 < len(rep_vert_tmp[item]) and counter2 < len(rep_vert_tmp[keys]):
-                    if keys != item:
-                        if rep_vert_tmp[keys][counter2][0] == rep_vert_tmp[item][counter1][0]:
-                            if rep_vert_tmp[keys][counter2][1] < rep_vert_tmp[item][counter1][1]:
-                                rep_vert_tmp[keys].remove(rep_vert_tmp[keys][counter2])
-                            else:
-                                counter2 +=1
-                        elif rep_vert_tmp[keys][counter2][0] > rep_vert_tmp[item][counter1][0]:
-                            counter1 += 1
+                branch = [item,keys]
+                rep_vert_tmp = remove_occurences(rep_vert_tmp, item, keys) 
+                if len(list(dict(rep_vert_tmp[keys]).items())) < minSupp:
+                    del rep_vert_tmp[keys]
+                else:
+                    #print(f"Support of {branch} is {len(list(dict(rep_vert_tmp[keys]).items()))}")
+                    frequent_seq["-".join(branch)] = supp_tmp
+                    d = explore_branch(rep_vert_tmp,minSupp, branch, frequent_seq)
+                    frequent_seq = merge_two_dicts(frequent_seq,d)
+    return frequent_seq
 
-                        else:
-                            rep_vert_tmp[keys].remove(rep_vert_tmp[keys][counter2])
-                    else:
 
-                        if rep_vert_tmp[keys][counter1][0] == rep_vert_tmp[keys][counter1 + 1][0] :
-                            while rep_vert_tmp[keys][counter1][0] == rep_vert_tmp[keys][counter2][0]:
-                                try:
-                                    counter2 += 1
-                                    rep_vert_tmp[keys][counter2]
-                                except:
-                                    break
-                            rep_vert_tmp[keys].remove(rep_vert_tmp[keys][counter1])
-                            counter2 -= 1
-                            counter1 = counter2
-                            if counter1 == len(rep_vert_tmp[keys]) -1:
-                                rep_vert_tmp[keys].remove(rep_vert_tmp[keys][counter1])
+def main(pos, neg, minSupp):
+    positive = spade(pos,1)
+    negative = spade(neg, 1)
+    c = 0
+    for i in positive.keys():
+        try:
+            t = negative[i] + positive[i]
+            tmp = i.split("-")
+            if t >= minSupp:
+                print(f"{tmp} {positive[i]} {negative[i]} {t}")
+                c += 1
+            del negative[i]
+        except:
+            t = positive[i]
+            tmp = i.split("-")
+            if t >= minSupp:
+                print(f"{tmp} {t} {0} {t}")
+                c += 1
 
-                        else:
-                            rep_vert_tmp[keys].remove(rep_vert_tmp[keys][counter1])
-                            if counter1 == len(rep_vert_tmp[keys]) -1:
-                                rep_vert_tmp[keys].remove(rep_vert_tmp[keys][counter1])
-                    
-        print(item, rep_vert_tmp)
+    if negative != {}:
+        for j in negative.keys():
+            if negative[j] >= minSupp:
+                tmp = j.split("-")
+                print(f"{tmp} {0} {negative[j]} {negative[j]}")
+                c += 1
+    print(c)
 
-spade("./Datasets/Test/negative.txt",2)
 
+
+# t = spade("./Datasets/Test/negative.txt",2)
+# print(t)
+# print("-------------------------------")
+# spade("./Datasets/Test/positive.txt",2)
+main("./Datasets/Test/positive.txt","./Datasets/Test/negative.txt",2)
