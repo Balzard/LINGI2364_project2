@@ -1,5 +1,8 @@
+#!/usr/bin/env python3
+import sys
 import copy
 import numpy as np
+import math
 # For the Reuters dataset, the negative class will be the file acq.txt and the positive class will be earn.txt. For
 # the protein dataset, the negative class will be the file PKA_group15.txt and the positive class will be SRC1521.txt
 
@@ -9,6 +12,7 @@ class Dataset:
             data = open(filepath, "r").readlines()
             self.items = list({elem.split()[0]:0 for elem in data if elem[0] != "\n"}.keys())
             self.transactions = []
+            self.longest_trans = 0
             i = 0
             while i < len(data):
                 if data[i] == "\n":
@@ -21,8 +25,12 @@ class Dataset:
                         tmp.append(data[i].split()[0])
                         i += 1
                     self.transactions.append(tmp)
+                    if len(tmp) > self.longest_trans:
+                        self.longest_trans = len(tmp)
                 except:
                     self.transactions.append(tmp)
+                    if len(tmp) > self.longest_trans:
+                        self.longest_trans = len(tmp)
                     break
             
         except IOError as e :
@@ -39,6 +47,9 @@ class Dataset:
 
     def get_nb_transactions(self):
         return len(self.transactions)
+
+    def get_longest_transaction(self):
+        return self.longest_trans
 
     def to_vertical_representation(self):
         vet_representation = {i:[] for i in self.items}
@@ -122,7 +133,21 @@ def merge_two_dicts(x, y):
     return z
 
 
-def new_explore_branch(rep_vert_pos, rep_vert_neg, branch, counter, k, frequent_seq):
+def explore_branch(rep_vert_pos, rep_vert_neg, branch, counter, k, frequent_seq):
+    """
+    Explore in depth a branch sequence
+
+    Parameters:
+        rep_vert_pos (dict): vertical representation of positive dataset
+        rep_vert_neg (dict): vertical representation of negative dataset
+        branch (list): current sequence visited in the search
+        counter (int): level to stop in the depth first search
+        k (int): number of k most frequent patterns
+        frequent_seq (dict): dict where each key is a sequence and its value is an array [total_supp, supp_pos, supp__neg]
+
+    Returns:
+        frequent_seq (dict) edited
+    """
     if counter == k:
         return frequent_seq
     items = sorted(list(set(rep_vert_pos.keys()).union(list(rep_vert_neg.keys()))))
@@ -138,27 +163,40 @@ def new_explore_branch(rep_vert_pos, rep_vert_neg, branch, counter, k, frequent_
         supp_tmp_pos = len(list(dict(rep_vert_pos_tmp[item]).items()))
         supp_tmp_neg = len(list(dict(rep_vert_neg_tmp[item]).items()))
         total_supp_tmp = supp_tmp_neg + supp_tmp_pos
-        if total_supp_tmp == 0:
-            return frequent_seq
-        frequent_seq["-".join(branch_tmp)] = [total_supp_tmp, supp_tmp_pos, supp_tmp_neg]
-        counter_tmp = counter + 1
-        f = new_explore_branch(rep_vert_pos_tmp,rep_vert_neg_tmp, branch_tmp, counter_tmp, k, frequent_seq)
-        frequent_seq = merge_two_dicts(frequent_seq,f)
+        if total_supp_tmp > 0:
+            frequent_seq["-".join(branch_tmp)] = [total_supp_tmp, supp_tmp_pos, supp_tmp_neg]
+            counter_tmp = counter + 1
+            f = explore_branch(rep_vert_pos_tmp,rep_vert_neg_tmp, branch_tmp, counter_tmp, k, frequent_seq)
+            frequent_seq = merge_two_dicts(frequent_seq,f)
 
     return frequent_seq
 
 
-def new_spade(pos_path, neg_path, k):
+def spade(pos_path, neg_path, k):
+    """
+    Returns the k most frequent patterns in both datasets
+
+    Parameters:
+        pos_path (string): path to positive dataset
+        neg_path (string): path to negative dataset
+        k (int): number of most frequent patterns to find
+
+    Returns:
+        None
+    """
     assert k > 0
     pos_dataset = Dataset(pos_path)
     neg_dataset = Dataset(neg_path)
     rep_vert_pos = pos_dataset.to_vertical_representation()
     rep_vert_neg = neg_dataset.to_vertical_representation()
     items = sorted(list(set(pos_dataset.get_items()).intersection(neg_dataset.get_items()))) # take items in common
+    items_tmp = copy.deepcopy(items)
     frequent_seq = {}
-    counter = 1
+    counter = 0
     supports = set()
-
+    k_tmp = 2
+    #long_trans = max([pos_dataset.get_longest_transaction(),neg_dataset.get_longest_transaction()])
+    
     for item in items:
         supp_tmp_pos = len(list(dict(rep_vert_pos[item]).items()))
         supp_tmp_neg = len(list(dict(rep_vert_neg[item]).items()))
@@ -166,93 +204,117 @@ def new_spade(pos_path, neg_path, k):
         frequent_seq[item] = [total_supp_tmp, supp_tmp_pos, supp_tmp_neg] 
     supports = sorted(set([i[0] for i in frequent_seq.values()]))[-k:]
 
-    while len(supports) < k:
-        print(items)
+    while True:
         for el in items:
-            items_tmp = copy.deepcopy(items)
-            items_tmp.remove(el)
-            items_tmp.insert(len(items_tmp),el)
+            if isinstance(el, str):
+                items_tmp.remove(el)
+                items_tmp.insert(len(items_tmp),el)
+            else:
+                items_tmp.remove(el[-1])
+                items_tmp.insert(len(items_tmp),el[-1])
             for key in items_tmp:
-                branch = [el] + [key]
-                rep_vert_pos_tmp = copy.deepcopy(rep_vert_pos)
-                rep_vert_neg_tmp = copy.deepcopy(rep_vert_neg)
-                rep_vert_pos_tmp = remove_occurences(rep_vert_pos_tmp, el, key)
-                rep_vert_neg_tmp = remove_occurences(rep_vert_neg_tmp, el, key) 
+                if len(el) == 1 or isinstance(el, str):
+                    branch = [el] + [key] 
+                else:
+                    branch = el + [key]
+
+                if len(branch) == 2:
+                    rep_vert_pos_tmp = copy.deepcopy(rep_vert_pos)
+                    rep_vert_neg_tmp = copy.deepcopy(rep_vert_neg)
+                    counter_tmp = 2
+                else:
+                    rep_vert_pos_tmp = copy.deepcopy(rep_vert_pos)
+                    rep_vert_neg_tmp = copy.deepcopy(rep_vert_neg)
+                    counter_tmp = 1
+                    for i in range(len(el)-1):
+                        if isinstance(el,str):
+                            pass
+                        else:
+                            rep_vert_pos_tmp = remove_occurences(rep_vert_pos_tmp, branch[i], branch[i+1])
+                            rep_vert_neg_tmp = remove_occurences(rep_vert_neg_tmp, branch[i], branch[i+1]) 
+                if isinstance(el,str):
+                    rep_vert_pos_tmp = remove_occurences(rep_vert_pos_tmp, el, key)
+                    rep_vert_neg_tmp = remove_occurences(rep_vert_neg_tmp, el, key)
+                else:
+                    rep_vert_pos_tmp = remove_occurences(rep_vert_pos_tmp, el[-1], key)
+                    rep_vert_neg_tmp = remove_occurences(rep_vert_neg_tmp, el[-1], key) 
                 supp_tmp_pos = len(list(dict(rep_vert_pos_tmp[key]).items()))
                 supp_tmp_neg = len(list(dict(rep_vert_neg_tmp[key]).items()))
                 total_supp_tmp = supp_tmp_neg + supp_tmp_pos
                 frequent_seq["-".join(branch)] = [total_supp_tmp, supp_tmp_pos, supp_tmp_neg]
-                counter_tmp = counter + 1
-                f = new_explore_branch(rep_vert_pos_tmp, rep_vert_neg_tmp, branch, counter_tmp, k, frequent_seq)
+                f = explore_branch(rep_vert_pos_tmp, rep_vert_neg_tmp, branch, counter_tmp, k_tmp, frequent_seq)
                 frequent_seq = merge_two_dicts(frequent_seq, f)
-                #frequent_seq = dict(list(frequent_seq.items()) + list(new_explore_branch(rep_vert_pos_tmp, rep_vert_neg_tmp, branch, counter_tmp, k, frequent_seq).items())) 
-    
+
+        if len(supports) >= k:
+            break
+        
+        if counter == 0:
+            counter = 2
+        else:
+            counter = k_tmp + counter
+
         supports = sorted(set([i[0] for i in frequent_seq.values()]))[-k:]
-        print(supports)
-    
+
+        if len(supports) < k:
+            items = []
+            for i in frequent_seq.keys():
+                i_tmp = str(i).split("-")
+                if len(i_tmp) == k_tmp:
+                    items.append(i_tmp)
+  
     min_support = supports[0]
-    t = []
-    #print(frequent_seq)
     for i,j in frequent_seq.items():
-        if j[0] >= supports[-k]:
-            i = str(i).split("-")
-            print(f"{i} {j[1]} {j[2]} {j[0]}")
-            t.append(i)
-            #t.append(1)
-            if j[0] == min_support:
-                pass
-    return t
+        if j[0] >= min_support:
+            i2 = str(i).split("-")
+            print(f"[{', '.join(map(str, i2))}] {j[1]} {j[2]} {j[0]}")
 
+ 
+    items = []
+    for r in frequent_seq.keys():
+        r_tmp = str(r).split("-")
+        if len(r_tmp) == counter and frequent_seq[r][0] >= min_support:
+            items.append(r_tmp)
+
+    while items != []:
+        l_tmp = []
+        for j_tmp in items:
+            if len(j_tmp) == counter and frequent_seq["-".join(j_tmp)][0] >= min_support:
+                items_tmp.remove(j_tmp[-1])
+                items_tmp.insert(len(items_tmp),j_tmp[-1])
+                for key in items_tmp:
+                    rep_vert_pos_tmp = copy.deepcopy(rep_vert_pos)
+                    rep_vert_neg_tmp = copy.deepcopy(rep_vert_neg)
+                    for i in range(len(j_tmp)-1):
+                        rep_vert_pos_tmp = remove_occurences(rep_vert_pos_tmp, j_tmp[i], j_tmp[i+1])
+                        rep_vert_neg_tmp = remove_occurences(rep_vert_neg_tmp, j_tmp[i], j_tmp[i+1]) 
+                    rep_vert_pos_tmp = remove_occurences(rep_vert_pos_tmp, j_tmp[-1], key)
+                    rep_vert_neg_tmp = remove_occurences(rep_vert_neg_tmp, j_tmp[-1], key) 
+                    supp_tmp_pos = len(list(dict(rep_vert_pos_tmp[key]).items()))
+                    supp_tmp_neg = len(list(dict(rep_vert_neg_tmp[key]).items()))
+                    total_supp_tmp = supp_tmp_neg + supp_tmp_pos
+                    tmp = j_tmp + [key]
+                    if total_supp_tmp >= min_support:
+                        print("["+', '.join(map(str, tmp))+"]", supp_tmp_pos, supp_tmp_neg, total_supp_tmp)
+                        items.append(tmp)
+                        frequent_seq["-".join(tmp)] = [total_supp_tmp, supp_tmp_pos, supp_tmp_neg]
+                l_tmp.append(j_tmp)
+        items = [x for x in items if x not in l_tmp]
+        counter += 1
+        
     
 
+def main():
+    pos_filepath = sys.argv[1] # filepath to positive class file
+    neg_filepath = sys.argv[2] # filepath to negative class file
+    k = int(sys.argv[3])
+    spade(pos_filepath, neg_filepath, k)
 
 
-# t = spade("./Datasets/Test/negative.txt",2)
-# print(t)
-# print("-------------------------------")
-# spade("./Datasets/Test/positive.txt",1)
-# spade("./Datasets/Test/negative.txt",1)
-#main("./Datasets/Test/positive.txt","./Datasets/Test/negative.txt",2)
-#new_spade("./Datasets/Protein/SRC1521.txt", "./Datasets/Protein/PKA_group15.txt",50)
-#new_spade("./Datasets/Test/positive.txt","./Datasets/Test/negative.txt",6)
-#print(remove_occurences({'B': [(0, 1), (0, 2), (0, 4), (0, 5), (1, 2), (1, 5), (2, 2), (2, 3)], 'A': [(0, 3), (1, 4), (2, 4), (2, 5)],"C": [(0,0),(1,1),(1,3),(2,0),(2,1)]},"A","C"))
-# print(remove_occurences({"C":[(0,0),(1,1),(1,3),(2,0),(2,1)]},"C","C"))
+if __name__ == "__main__":
+    spade("./Datasets/Protein/SRC1521.txt","./Datasets/Protein/PKA_group15.txt",40)
+    #spade("./Datasets/Test/positive.txt","./Datasets/Test/negative.txt",6)
+    #main()
 
-# ['B-A-C-A'] 1 3 4
 
-l = [["C"],["C", "A"],["A"],["A", "A"],["B"],["B", "A"],["C", "C"],["C", "C", "A"] ,["A", "C"],["A", "C", "A"],["A", "B"], ["B", "B"],["C", "B"],["C", "B", "A"],["C","B", "B"],["A", "C", "C"] ,["A", "C", "C", "A"] ,["A", "B", "A"],["A", "B", "B"],["C", "C", "B"],
-["C", "A", "B"],
-["C", "B", "A", "B"],
-["A", "A", "A"],
-["A", "A", "C"] ,
-["A", "A", "C", "A"] ,
-["A", "A", "B"],
-["A", "B", "C"],
-["A", "B", "C", "A"],
-["B", "C"] ,
-["B", "C", "A"],
-["B", "A", "B"] ,
-["B", "B", "A"]]
-# [C, C, A, A] 
-# [C, C, A, B]
-# [C, C, B, A] 
-# [C, C, B, B] 
-# [C, A, A] 
-# [C, B, B, A]
-# [A, C, C, A, B] 
-# [A, C, C, B] 
-# [A, C, A, B] 
-# [A, C, B]
-# [A, C, B, A] 
-# [A, C, B, A, B] 
-# [A, C, B, B] 
-# [A, B, A, B] 
-# [B, A, A] 
-# [B, B, A, A] ]
-
-r = new_spade("./Datasets/Test/positive.txt","./Datasets/Test/negative.txt",5)
-
-u = [i for i in l if i not in r]
-print(u)
 
 
