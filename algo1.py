@@ -240,9 +240,10 @@ def spade(pos_path, neg_path, k):
                 supp_tmp_pos = len(list(dict(rep_vert_pos_tmp[key]).items()))
                 supp_tmp_neg = len(list(dict(rep_vert_neg_tmp[key]).items()))
                 total_supp_tmp = supp_tmp_neg + supp_tmp_pos
-                frequent_seq["-".join(branch)] = [total_supp_tmp, supp_tmp_pos, supp_tmp_neg]
-                f = explore_branch(rep_vert_pos_tmp, rep_vert_neg_tmp, branch, counter_tmp, k_tmp, frequent_seq)
-                frequent_seq = merge_two_dicts(frequent_seq, f)
+                if total_supp_tmp > 0:
+                    frequent_seq["-".join(branch)] = [total_supp_tmp, supp_tmp_pos, supp_tmp_neg]
+                    f = explore_branch(rep_vert_pos_tmp, rep_vert_neg_tmp, branch, counter_tmp, k_tmp, frequent_seq)
+                    frequent_seq = merge_two_dicts(frequent_seq, f)
 
         supports = sorted(set([i[0] for i in frequent_seq.values()]))[-k:]
 
@@ -299,11 +300,14 @@ def spade(pos_path, neg_path, k):
                 l_tmp.append(j_tmp)
         items = [x for x in items if x not in l_tmp]
         counter += 1
+        print(items)
+        print(l_tmp)
 
     for i,j in frequent_seq.items():
         i2 = str(i).split("-")
         if j[0] >= min_support:
             print(f"[{', '.join(map(str, i2))}] {j[1]} {j[2]} {j[0]}")
+ 
  
  
 
@@ -315,9 +319,9 @@ def main():
 
 
 if __name__ == "__main__":
-    #spade("./Datasets/Protein/SRC1521.txt","./Datasets/Protein/PKA_group15.txt",20)
-    #spade("./Datasets/Test/positive.txt","./Datasets/Test/negative.txt",4)
-    main()
+    spade("./Datasets/Protein/SRC1521.txt","./Datasets/Protein/PKA_group15.txt",20)
+    #spade("./Datasets/Test/positive.txt","./Datasets/Test/negative.txt",6)
+    #main()
 
 
 
