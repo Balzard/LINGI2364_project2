@@ -195,7 +195,6 @@ def spade(pos_path, neg_path, k):
     counter = 0
     supports = set()
     k_tmp = 2
-    #long_trans = max([pos_dataset.get_longest_transaction(),neg_dataset.get_longest_transaction()])
     
     for item in items:
         supp_tmp_pos = len(list(dict(rep_vert_pos[item]).items()))
@@ -245,15 +244,12 @@ def spade(pos_path, neg_path, k):
                 f = explore_branch(rep_vert_pos_tmp, rep_vert_neg_tmp, branch, counter_tmp, k_tmp, frequent_seq)
                 frequent_seq = merge_two_dicts(frequent_seq, f)
 
-        if len(supports) >= k:
-            break
-        
+        supports = sorted(set([i[0] for i in frequent_seq.values()]))[-k:]
+
         if counter == 0:
             counter = 2
         else:
             counter = k_tmp + counter
-
-        supports = sorted(set([i[0] for i in frequent_seq.values()]))[-k:]
 
         if len(supports) < k:
             items = []
@@ -261,19 +257,18 @@ def spade(pos_path, neg_path, k):
                 i_tmp = str(i).split("-")
                 if len(i_tmp) == k_tmp:
                     items.append(i_tmp)
-  
-    min_support = supports[0]
-    for i,j in frequent_seq.items():
-        if j[0] >= min_support:
-            i2 = str(i).split("-")
-            print(f"[{', '.join(map(str, i2))}] {j[1]} {j[2]} {j[0]}")
 
- 
+        if len(supports) >= k:
+            break
+
+    min_support = supports[0]
     items = []
-    for r in frequent_seq.keys():
-        r_tmp = str(r).split("-")
-        if len(r_tmp) == counter and frequent_seq[r][0] >= min_support:
+    for i,j in list(frequent_seq.items()):
+        r_tmp = str(i).split("-")
+        if len(r_tmp) == counter and j[0] >= min_support:
             items.append(r_tmp)
+        if j[0] < min_support:
+            del frequent_seq[i]
 
     while items != []:
         l_tmp = []
@@ -294,14 +289,23 @@ def spade(pos_path, neg_path, k):
                     total_supp_tmp = supp_tmp_neg + supp_tmp_pos
                     tmp = j_tmp + [key]
                     if total_supp_tmp >= min_support:
-                        print("["+', '.join(map(str, tmp))+"]", supp_tmp_pos, supp_tmp_neg, total_supp_tmp)
                         items.append(tmp)
                         frequent_seq["-".join(tmp)] = [total_supp_tmp, supp_tmp_pos, supp_tmp_neg]
+                        if total_supp_tmp > min_support:
+                            supports.pop(0)
+                            supports.append(total_supp_tmp)
+                            supports = sorted(set([i[0] for i in frequent_seq.values()]))[-k:]
+                            min_support = supports[0]
                 l_tmp.append(j_tmp)
         items = [x for x in items if x not in l_tmp]
         counter += 1
-        
-    
+
+    for i,j in frequent_seq.items():
+        i2 = str(i).split("-")
+        if j[0] >= min_support:
+            print(f"[{', '.join(map(str, i2))}] {j[1]} {j[2]} {j[0]}")
+ 
+ 
 
 def main():
     pos_filepath = sys.argv[1] # filepath to positive class file
@@ -311,9 +315,9 @@ def main():
 
 
 if __name__ == "__main__":
-    spade("./Datasets/Protein/SRC1521.txt","./Datasets/Protein/PKA_group15.txt",40)
-    #spade("./Datasets/Test/positive.txt","./Datasets/Test/negative.txt",6)
-    #main()
+    #spade("./Datasets/Protein/SRC1521.txt","./Datasets/Protein/PKA_group15.txt",20)
+    #spade("./Datasets/Test/positive.txt","./Datasets/Test/negative.txt",4)
+    main()
 
 
 
